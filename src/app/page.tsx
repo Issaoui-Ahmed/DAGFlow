@@ -6,8 +6,10 @@ import ReactFlow, {
   Connection,
   Controls,
   Edge,
-  MiniMap,
+  Handle,
   Node,
+  NodeProps,
+  Position,
   addEdge,
   useEdgesState,
   useNodesState,
@@ -31,7 +33,7 @@ type Workflow = {
   edges: WorkflowEdge[];
 };
 
-type FlowNode = Node<{ label: string }>;
+type FlowNode = Node<{ label: string; onChange?: (id: string, name: string) => void }>;
 type FlowEdge = Edge;
 
 function mapWorkflowToNodes(nodes: WorkflowNode[]): FlowNode[] {
@@ -39,7 +41,7 @@ function mapWorkflowToNodes(nodes: WorkflowNode[]): FlowNode[] {
     id: node.id,
     position: node.position,
     data: { label: node.name },
-    type: "default",
+    type: "editable",
   }));
 }
 
@@ -68,10 +70,27 @@ function mapEdgesToWorkflow(edges: FlowEdge[]): WorkflowEdge[] {
   }));
 }
 
+function EditableNode({ id, data }: NodeProps<{ label: string; onChange?: (id: string, value: string) => void }>) {
+  return (
+    <div className="flex min-w-[160px] flex-col gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-lg">
+      <label className="text-xs uppercase tracking-wide text-slate-400" htmlFor={`node-${id}`}>
+        Name
+      </label>
+      <input
+        id={`node-${id}`}
+        className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40"
+        value={data.label}
+        onChange={(event) => data.onChange?.(id, event.target.value)}
+      />
+      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-indigo-400" />
+      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-indigo-400" />
+    </div>
+  );
+}
+
 export default function Page() {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +115,6 @@ export default function Page() {
 
         setNodes(mapWorkflowToNodes(workflow.nodes));
         setEdges(mapWorkflowToEdges(workflow.edges));
-        setSelectedNodeId(workflow.nodes[0]?.id ?? null);
         setError(null);
       } catch (err) {
         if (isMounted) {
@@ -131,38 +149,48 @@ export default function Page() {
     [setEdges],
   );
 
-  const onNodeSelectionChange = useCallback((selectedNodes: FlowNode[]) => {
-    setSelectedNodeId(selectedNodes[0]?.id ?? null);
-  }, []);
-
-  const handleSelectionChange = useCallback(
-    ({ nodes: selectedNodes }: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
-      onNodeSelectionChange(selectedNodes);
-    },
-    [onNodeSelectionChange],
-  );
-
-  const selectedNode = useMemo(
-    () => nodes.find((node) => node.id === selectedNodeId) ?? null,
-    [nodes, selectedNodeId],
-  );
-
   const handleNameChange = useCallback(
-    (name: string) => {
-      if (!selectedNodeId) {
-        return;
-      }
-
+    (id: string, name: string) => {
       setNodes((currentNodes) =>
         currentNodes.map((node) =>
-          node.id === selectedNodeId
-            ? { ...node, data: { ...node.data, label: name } }
-            : node,
+          node.id === id ? { ...node, data: { ...node.data, label: name } } : node,
         ),
       );
     },
-    [selectedNodeId, setNodes],
+    [setNodes],
   );
+
+  const nodeTypes = useMemo(
+    () => ({
+      editable: EditableNode,
+    }),
+    [],
+  );
+
+  const nodesWithHandlers = useMemo(
+    () =>
+      nodes.map((node) => ({
+        ...node,
+        data: { ...node.data, onChange: handleNameChange },
+      })),
+    [nodes, handleNameChange],
+  );
+
+  const handleAddNode = useCallback(() => {
+    setNodes((currentNodes) => {
+      const id = `node-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const offset = currentNodes.length * 40;
+      return [
+        ...currentNodes,
+        {
+          id,
+          position: { x: 100 + offset, y: 100 + offset },
+          data: { label: "New node" },
+          type: "editable",
+        },
+      ];
+    });
+  }, [setNodes]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -202,7 +230,27 @@ export default function Page() {
         </p>
       </header>
 
-      <div className="flex flex-1 flex-col gap-4 overflow-hidden p-4 md:flex-row">
+      <div className="flex flex-1 flex-col gap-4 overflow-hidden p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleAddNode}
+            className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-400"
+          >
+            Add node
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-indigo-400/60"
+          >
+            {saving ? "Saving..." : "Save workflow"}
+          </button>
+          {saveMessage ? <p className="text-xs text-emerald-400">{saveMessage}</p> : null}
+          {error ? <p className="text-xs text-rose-400">{error}</p> : null}
+        </div>
+
         <section className="flex-1 min-h-[360px] overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
           {loading ? (
             <div className="flex h-full items-center justify-center text-slate-300">
@@ -210,56 +258,21 @@ export default function Page() {
             </div>
           ) : (
             <ReactFlow
-              nodes={nodes}
+              nodes={nodesWithHandlers}
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
-              onSelectionChange={handleSelectionChange}
+              nodeTypes={nodeTypes}
               fitView
               proOptions={{ hideAttribution: true }}
               className="bg-slate-950"
             >
               <Background color="#64748b" gap={24} />
-              <MiniMap pannable zoomable />
               <Controls />
             </ReactFlow>
           )}
         </section>
-
-        <aside className="flex w-full max-w-md flex-col gap-4 rounded-lg border border-slate-800 bg-slate-900 p-4">
-          <h2 className="text-lg font-semibold">Node Details</h2>
-          {selectedNode ? (
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-300" htmlFor="node-name">
-                Node name
-              </label>
-              <input
-                id="node-name"
-                type="text"
-                value={typeof selectedNode.data?.label === "string" ? selectedNode.data.label : ""}
-                onChange={(event) => handleNameChange(event.target.value)}
-                className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40"
-              />
-              <p className="text-xs text-slate-400">Select a node to edit its name.</p>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-400">Select a node in the graph to edit its name.</p>
-          )}
-
-          <div className="mt-auto space-y-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-indigo-400/60"
-            >
-              {saving ? "Saving..." : "Save workflow"}
-            </button>
-            {saveMessage ? <p className="text-xs text-emerald-400">{saveMessage}</p> : null}
-            {error ? <p className="text-xs text-rose-400">{error}</p> : null}
-          </div>
-        </aside>
       </div>
     </div>
   );
