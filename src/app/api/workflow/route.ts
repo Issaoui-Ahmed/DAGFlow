@@ -6,7 +6,9 @@ const WORKFLOW_FILE_PATH = path.join(process.cwd(), "src", "data", "workflow.jso
 
 type WorkflowNode = {
   id: string;
-  name: string;
+  file: string;
+  input: string;
+  output: string;
   position: { x: number; y: number };
 };
 
@@ -35,7 +37,9 @@ function isValidWorkflow(workflow: unknown): workflow is Workflow {
         node &&
         typeof node === "object" &&
         typeof node.id === "string" &&
-        typeof node.name === "string" &&
+        typeof node.file === "string" &&
+        typeof node.input === "string" &&
+        typeof node.output === "string" &&
         node.position &&
         typeof node.position === "object" &&
         typeof node.position.x === "number" &&

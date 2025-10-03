@@ -18,7 +18,9 @@ import "reactflow/dist/style.css";
 
 type WorkflowNode = {
   id: string;
-  name: string;
+  file: string;
+  input: string;
+  output: string;
   position: { x: number; y: number };
 };
 
@@ -33,14 +35,29 @@ type Workflow = {
   edges: WorkflowEdge[];
 };
 
-type FlowNode = Node<{ label: string; onChange?: (id: string, name: string) => void }>;
+type WorkflowNodeField = "file" | "input" | "output";
+
+type FlowNodeData = {
+  file: string;
+  input: string;
+  output: string;
+  label: string;
+  onFieldChange?: (id: string, field: WorkflowNodeField, value: string) => void;
+};
+
+type FlowNode = Node<FlowNodeData>;
 type FlowEdge = Edge;
 
 function mapWorkflowToNodes(nodes: WorkflowNode[]): FlowNode[] {
   return nodes.map((node) => ({
     id: node.id,
     position: node.position,
-    data: { label: node.name },
+    data: {
+      file: node.file,
+      input: node.input ?? "",
+      output: node.output ?? "",
+      label: node.file,
+    },
     type: "editable",
   }));
 }
@@ -48,7 +65,9 @@ function mapWorkflowToNodes(nodes: WorkflowNode[]): FlowNode[] {
 function mapNodesToWorkflow(nodes: FlowNode[]): WorkflowNode[] {
   return nodes.map((node) => ({
     id: node.id,
-    name: typeof node.data?.label === "string" ? node.data.label : "",
+    file: typeof node.data?.file === "string" ? node.data.file : "",
+    input: typeof node.data?.input === "string" ? node.data.input : "",
+    output: typeof node.data?.output === "string" ? node.data.output : "",
     position: node.position,
   }));
 }
@@ -70,18 +89,40 @@ function mapEdgesToWorkflow(edges: FlowEdge[]): WorkflowEdge[] {
   }));
 }
 
-function EditableNode({ id, data }: NodeProps<{ label: string; onChange?: (id: string, value: string) => void }>) {
+function EditableNode({ id, data }: NodeProps<FlowNodeData>) {
   return (
-    <div className="flex min-w-[160px] flex-col gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-lg">
-      <label className="text-xs uppercase tracking-wide text-slate-400" htmlFor={`node-${id}`}>
-        Name
-      </label>
-      <input
-        id={`node-${id}`}
-        className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40"
-        value={data.label}
-        onChange={(event) => data.onChange?.(id, event.target.value)}
-      />
+    <div className="flex min-w-[220px] flex-col gap-3 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-lg">
+      <div className="flex flex-col gap-1">
+        <span className="text-[10px] uppercase tracking-wide text-slate-400">Python file</span>
+        <input
+          id={`file-${id}`}
+          className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40"
+          value={data.file}
+          onChange={(event) => data.onFieldChange?.(id, "file", event.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] uppercase tracking-wide text-slate-400" htmlFor={`input-${id}`}>
+          Input
+        </label>
+        <textarea
+          id={`input-${id}`}
+          className="min-h-[60px] rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40"
+          value={data.input}
+          onChange={(event) => data.onFieldChange?.(id, "input", event.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] uppercase tracking-wide text-slate-400" htmlFor={`output-${id}`}>
+          Output
+        </label>
+        <textarea
+          id={`output-${id}`}
+          className="min-h-[60px] rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40"
+          value={data.output}
+          onChange={(event) => data.onFieldChange?.(id, "output", event.target.value)}
+        />
+      </div>
       <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-indigo-400" />
       <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-indigo-400" />
     </div>
@@ -145,19 +186,65 @@ export default function Page() {
           eds,
         ),
       );
+
+      if (connection.source && connection.target) {
+        setNodes((currentNodes) => {
+          const sourceNode = currentNodes.find((node) => node.id === connection.source);
+          const sourceOutput =
+            typeof sourceNode?.data?.output === "string" ? sourceNode.data.output : "";
+
+          return currentNodes.map((node) =>
+            node.id === connection.target
+              ? { ...node, data: { ...node.data, input: sourceOutput } }
+              : node,
+          );
+        });
+      }
     },
-    [setEdges],
+    [setEdges, setNodes],
   );
 
-  const handleNameChange = useCallback(
-    (id: string, name: string) => {
-      setNodes((currentNodes) =>
-        currentNodes.map((node) =>
-          node.id === id ? { ...node, data: { ...node.data, label: name } } : node,
-        ),
-      );
+  const handleFieldChange = useCallback(
+    (id: string, field: WorkflowNodeField, value: string) => {
+      setNodes((currentNodes) => {
+        const updatedNodes = currentNodes.map((node) => {
+          if (node.id !== id) {
+            return node;
+          }
+
+          const nextData = {
+            ...node.data,
+            [field]: value,
+            label: field === "file" ? value : node.data?.label ?? node.data?.file ?? "",
+          };
+
+          if (field !== "file" && typeof node.data?.file === "string") {
+            nextData.file = node.data.file;
+          }
+
+          return { ...node, data: nextData };
+        });
+
+        if (field !== "output") {
+          return updatedNodes;
+        }
+
+        const downstreamNodeIds = edges
+          .filter((edge) => edge.source === id)
+          .map((edge) => edge.target);
+
+        if (downstreamNodeIds.length === 0) {
+          return updatedNodes;
+        }
+
+        return updatedNodes.map((node) =>
+          downstreamNodeIds.includes(node.id)
+            ? { ...node, data: { ...node.data, input: value } }
+            : node,
+        );
+      });
     },
-    [setNodes],
+    [edges, setNodes],
   );
 
   const nodeTypes = useMemo(
@@ -171,26 +258,51 @@ export default function Page() {
     () =>
       nodes.map((node) => ({
         ...node,
-        data: { ...node.data, onChange: handleNameChange },
+        data: { ...node.data, onFieldChange: handleFieldChange },
       })),
-    [nodes, handleNameChange],
+    [nodes, handleFieldChange],
   );
 
   const handleAddNode = useCallback(() => {
     setNodes((currentNodes) => {
-      const id = `node-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const offset = currentNodes.length * 40;
-      return [
-        ...currentNodes,
-        {
-          id,
-          position: { x: 100 + offset, y: 100 + offset },
-          data: { label: "New node" },
-          type: "editable",
+      const newId = `node-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const previousNode = currentNodes[currentNodes.length - 1];
+      const previousOutput =
+        typeof previousNode?.data?.output === "string" ? previousNode.data.output : "";
+
+      const newNode: FlowNode = {
+        id: newId,
+        position: {
+          x: currentNodes.length * 240,
+          y: 0,
         },
-      ];
+        data: {
+          file: `node_${currentNodes.length + 1}.py`,
+          input: previousOutput,
+          output: "",
+          label: `node_${currentNodes.length + 1}.py`,
+        },
+        type: "editable",
+      };
+
+      setEdges((currentEdges) => {
+        if (!previousNode) {
+          return currentEdges;
+        }
+
+        const newEdge: FlowEdge = {
+          id: `edge-${previousNode.id}-${newId}`,
+          source: previousNode.id,
+          target: newId,
+          type: "default",
+        };
+
+        return [...currentEdges, newEdge];
+      });
+
+      return [...currentNodes, newNode];
     });
-  }, [setNodes]);
+  }, [setEdges, setNodes]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -226,7 +338,9 @@ export default function Page() {
       <header className="border-b border-slate-800 px-6 py-4">
         <h1 className="text-2xl font-semibold">DAG Workflow Editor</h1>
         <p className="text-sm text-slate-400">
-          Load, edit, and save your workflow defined in <code>src/data/workflow.json</code>.
+          Each node now maps directly to a Python file whose output feeds the next node in the
+          sequence. Edit the configuration stored in <code>src/data/workflow.json</code> to evolve
+          your workflow.
         </p>
       </header>
 
@@ -237,7 +351,7 @@ export default function Page() {
             onClick={handleAddNode}
             className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-400"
           >
-            Add node
+            Add Python node
           </button>
           <button
             type="button"
