@@ -3,22 +3,16 @@
     {
       "id": "node-1",
       "file": "load_data.py",
-      "input": "",
-      "output": "seed: start",
       "position": { "x": 0, "y": 0 }
     },
     {
       "id": "node-2",
       "file": "transform_data.py",
-      "input": "seed: start",
-      "output": "seed: start -> transformed",
       "position": { "x": 280, "y": 0 }
     },
     {
       "id": "node-3",
       "file": "save_results.py",
-      "input": "seed: start -> transformed",
-      "output": "workflow complete",
       "position": { "x": 560, "y": 0 }
     }
   ],

@@ -19,8 +19,6 @@ import "reactflow/dist/style.css";
 type WorkflowNode = {
   id: string;
   file: string;
-  input: string;
-  output: string;
   position: { x: number; y: number };
 };
 
@@ -35,14 +33,10 @@ type Workflow = {
   edges: WorkflowEdge[];
 };
 
-type WorkflowNodeField = "file" | "input" | "output";
-
 type FlowNodeData = {
   file: string;
-  input: string;
-  output: string;
   label: string;
-  onFieldChange?: (id: string, field: WorkflowNodeField, value: string) => void;
+  onFileChange?: (id: string, value: string) => void;
 };
 
 type FlowNode = Node<FlowNodeData>;
@@ -54,8 +48,6 @@ function mapWorkflowToNodes(nodes: WorkflowNode[]): FlowNode[] {
     position: node.position,
     data: {
       file: node.file,
-      input: node.input ?? "",
-      output: node.output ?? "",
       label: node.file,
     },
     type: "editable",
@@ -66,8 +58,6 @@ function mapNodesToWorkflow(nodes: FlowNode[]): WorkflowNode[] {
   return nodes.map((node) => ({
     id: node.id,
     file: typeof node.data?.file === "string" ? node.data.file : "",
-    input: typeof node.data?.input === "string" ? node.data.input : "",
-    output: typeof node.data?.output === "string" ? node.data.output : "",
     position: node.position,
   }));
 }
@@ -98,29 +88,7 @@ function EditableNode({ id, data }: NodeProps<FlowNodeData>) {
           id={`file-${id}`}
           className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40"
           value={data.file}
-          onChange={(event) => data.onFieldChange?.(id, "file", event.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] uppercase tracking-wide text-slate-400" htmlFor={`input-${id}`}>
-          Input
-        </label>
-        <textarea
-          id={`input-${id}`}
-          className="min-h-[60px] rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40"
-          value={data.input}
-          onChange={(event) => data.onFieldChange?.(id, "input", event.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-[10px] uppercase tracking-wide text-slate-400" htmlFor={`output-${id}`}>
-          Output
-        </label>
-        <textarea
-          id={`output-${id}`}
-          className="min-h-[60px] rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40"
-          value={data.output}
-          onChange={(event) => data.onFieldChange?.(id, "output", event.target.value)}
+          onChange={(event) => data.onFileChange?.(id, event.target.value)}
         />
       </div>
       <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-indigo-400" />
@@ -186,65 +154,28 @@ export default function Page() {
           eds,
         ),
       );
-
-      if (connection.source && connection.target) {
-        setNodes((currentNodes) => {
-          const sourceNode = currentNodes.find((node) => node.id === connection.source);
-          const sourceOutput =
-            typeof sourceNode?.data?.output === "string" ? sourceNode.data.output : "";
-
-          return currentNodes.map((node) =>
-            node.id === connection.target
-              ? { ...node, data: { ...node.data, input: sourceOutput } }
-              : node,
-          );
-        });
-      }
     },
-    [setEdges, setNodes],
+    [setEdges],
   );
 
-  const handleFieldChange = useCallback(
-    (id: string, field: WorkflowNodeField, value: string) => {
-      setNodes((currentNodes) => {
-        const updatedNodes = currentNodes.map((node) => {
-          if (node.id !== id) {
-            return node;
-          }
-
-          const nextData = {
-            ...node.data,
-            [field]: value,
-            label: field === "file" ? value : node.data?.label ?? node.data?.file ?? "",
-          };
-
-          if (field !== "file" && typeof node.data?.file === "string") {
-            nextData.file = node.data.file;
-          }
-
-          return { ...node, data: nextData };
-        });
-
-        if (field !== "output") {
-          return updatedNodes;
-        }
-
-        const downstreamNodeIds = edges
-          .filter((edge) => edge.source === id)
-          .map((edge) => edge.target);
-
-        if (downstreamNodeIds.length === 0) {
-          return updatedNodes;
-        }
-
-        return updatedNodes.map((node) =>
-          downstreamNodeIds.includes(node.id)
-            ? { ...node, data: { ...node.data, input: value } }
+  const handleFileChange = useCallback(
+    (id: string, value: string) => {
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          node.id === id
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  file: value,
+                  label: value || node.data?.label || node.data?.file || "",
+                },
+              }
             : node,
-        );
-      });
+        ),
+      );
     },
-    [edges, setNodes],
+    [setNodes],
   );
 
   const nodeTypes = useMemo(
@@ -258,17 +189,15 @@ export default function Page() {
     () =>
       nodes.map((node) => ({
         ...node,
-        data: { ...node.data, onFieldChange: handleFieldChange },
+        data: { ...node.data, onFileChange: handleFileChange },
       })),
-    [nodes, handleFieldChange],
+    [nodes, handleFileChange],
   );
 
   const handleAddNode = useCallback(() => {
     setNodes((currentNodes) => {
       const newId = `node-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const previousNode = currentNodes[currentNodes.length - 1];
-      const previousOutput =
-        typeof previousNode?.data?.output === "string" ? previousNode.data.output : "";
 
       const newNode: FlowNode = {
         id: newId,
@@ -278,8 +207,6 @@ export default function Page() {
         },
         data: {
           file: `node_${currentNodes.length + 1}.py`,
-          input: previousOutput,
-          output: "",
           label: `node_${currentNodes.length + 1}.py`,
         },
         type: "editable",
@@ -333,14 +260,42 @@ export default function Page() {
     }
   }, [edges, nodes]);
 
+  const [running, setRunning] = useState(false);
+
+  const handleRun = useCallback(async () => {
+    setRunning(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/run", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Failed to run workflow");
+      }
+      const payload = (await response.json()) as { result?: unknown; error?: string };
+      if (payload.error) {
+        throw new Error(payload.error);
+      }
+      if (typeof window !== "undefined") {
+        window.alert(`Workflow complete:\n${JSON.stringify(payload.result, null, 2)}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to run workflow";
+      setError(message);
+      if (typeof window !== "undefined") {
+        window.alert(message);
+      }
+    } finally {
+      setRunning(false);
+    }
+  }, []);
+
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-100">
       <header className="border-b border-slate-800 px-6 py-4">
         <h1 className="text-2xl font-semibold">DAG Workflow Editor</h1>
         <p className="text-sm text-slate-400">
-          Each node now maps directly to a Python file whose output feeds the next node in the
-          sequence. Edit the configuration stored in <code>src/data/workflow.json</code> to evolve
-          your workflow.
+          Each node maps to a Python file that runs sequentially. Update the configuration stored
+          in <code>src/data/workflow.json</code>, then use the Run action to execute the orchestrated
+          workflow.
         </p>
       </header>
 
@@ -360,6 +315,14 @@ export default function Page() {
             className="rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-indigo-400/60"
           >
             {saving ? "Saving..." : "Save workflow"}
+          </button>
+          <button
+            type="button"
+            onClick={handleRun}
+            disabled={running}
+            className="rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-400/60"
+          >
+            {running ? "Running..." : "Run"}
           </button>
           {saveMessage ? <p className="text-xs text-emerald-400">{saveMessage}</p> : null}
           {error ? <p className="text-xs text-rose-400">{error}</p> : null}
