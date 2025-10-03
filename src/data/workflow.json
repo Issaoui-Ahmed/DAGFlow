@@ -1,23 +1,29 @@
 {
   "nodes": [
     {
-      "id": "1",
-      "name": "Start",
+      "id": "node-1",
+      "file": "load_data.py",
+      "input": "",
+      "output": "seed: start",
       "position": { "x": 0, "y": 0 }
     },
     {
-      "id": "2",
-      "name": "Process",
-      "position": { "x": 250, "y": 0 }
+      "id": "node-2",
+      "file": "transform_data.py",
+      "input": "seed: start",
+      "output": "seed: start -> transformed",
+      "position": { "x": 280, "y": 0 }
     },
     {
-      "id": "3",
-      "name": "End",
-      "position": { "x": 500, "y": 0 }
+      "id": "node-3",
+      "file": "save_results.py",
+      "input": "seed: start -> transformed",
+      "output": "workflow complete",
+      "position": { "x": 560, "y": 0 }
     }
   ],
   "edges": [
-    { "id": "e1-2", "source": "1", "target": "2" },
-    { "id": "e2-3", "source": "2", "target": "3" }
+    { "id": "e-node-1-node-2", "source": "node-1", "target": "node-2" },
+    { "id": "e-node-2-node-3", "source": "node-2", "target": "node-3" }
   ]
 }
